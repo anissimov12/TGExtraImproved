@@ -168,7 +168,7 @@
 typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     GHOST_MODE = 0,
     READ_RECEIPT = 1,
-    MISC = 2,
+    MISC = 3,
     FILE_FIXER = 3,
     FAKE_LOCATION = 4,
     LANGUAGE = 5,
@@ -373,6 +373,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_SUBTITLE");
+		}
+		else if (indexPath.row == 2) {
+			cell.textLabel.text = @"Anti-Delete Messages";
+			cell.detailTextLabel.text = @"Prevent others from deleting messages for you";
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -648,6 +652,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
             switch (indexPath.row) {
                 case 0: return kDisableAllAds;
                 case 1: return kDisableForwardRestriction;
+				case 2: return @"enableAntiDelete";
                 default: return nil;
             }
         case 3:
