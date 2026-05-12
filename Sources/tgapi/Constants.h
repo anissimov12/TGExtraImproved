@@ -51,6 +51,14 @@
 #define kDisableAllAds @"disableOnlineStatus"
 #define kDisableForwardRestriction @"disableForwardRestriction"
 
+// --- ANTI-DELETE ID ---
+#define kMessagesDeleteMessages -443639891   // 0xe58e95ad (Messaggi privati e gruppi)
+#define kChannelsDeleteMessages -2067628722  // 0x84c1fd4e (Canali e Supergruppi)
+#define kUpdateDeleteMessages 0xa200a095     // Update che arriva dal server
+#define kUpdateDeleteChannelMessages 0xc32d34f9 // Update canale dal server
+
+#define kEnableAntiDelete @"enableAntiDelete"
+
 #define FAKE_LOCATION_ENABLED_KEY @"TGExtraFakeLocation"
 #define FAKE_LATITUDE_KEY @"TGExtraSavedLatitude"
 #define FAKE_LONGITUDE_KEY @"TGExtraSavedLongitude"
