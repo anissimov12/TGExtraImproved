@@ -18,7 +18,7 @@
 	[payload getBytes:&functionID length:4];
 	self.functionID = [NSNumber numberWithInt:functionID];
 	
-	id(^hooked_block)(NSData *) = ^(NSData *inputData) {
+	id(^hooked_block)(NSData *) = ^id(NSData *inputData) {
 		// --- LOGICA ANTI-DELETE IN ENTRATA ---
 		if ([[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"]) {
 			int32_t responseID;
@@ -27,7 +27,7 @@
 			// Se il pacchetto in arrivo è un comando di eliminazione, lo ignoriamo
 			if (responseID == kUpdateDeleteMessages || responseID == kUpdateDeleteChannelMessages) {
 				customLog(@"[TGExtra] Anti-Delete: Bloccato comando di eliminazione dal server.");
-				return (NSData *)nil; 
+				return nil; 
 			}
 		}
 
