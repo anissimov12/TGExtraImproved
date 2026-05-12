@@ -168,7 +168,7 @@
 typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     GHOST_MODE = 0,
     READ_RECEIPT = 1,
-    MISC = 3,
+    MISC = 2,
     FILE_FIXER = 3,
     FAKE_LOCATION = 4,
     LANGUAGE = 5,
@@ -186,7 +186,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		case READ_RECEIPT:
 		   return 2;
 		case MISC:
-		   return 2;
+		   return 3;
 		case FILE_FIXER:
 		   return 2;
 		case FAKE_LOCATION:
