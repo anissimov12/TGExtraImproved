@@ -20,15 +20,22 @@
 	
 	id(^hooked_block)(NSData *) = ^id(NSData *inputData) {
 		// --- LOGICA ANTI-DELETE IN ENTRATA ---
-		if ([[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"]) {
+		if (inputData.length >= 4) {
 			int32_t responseID;
 			[inputData getBytes:&responseID length:4];
 			
-			// Se il pacchetto in arrivo è un comando di eliminazione, lo ignoriamo
-			if (responseID == kUpdateDeleteMessages || responseID == kUpdateDeleteChannelMessages) {
-				customLog(@"[TGExtra] Anti-Delete: Bloccato comando di eliminazione dal server.");
-				return nil; 
+			// Log di debug per vedere TUTTI i pacchetti in arrivo (utile per trovare nuovi ID)
+			customLog(@"[TGExtra] DEBUG: Pacchetto in arrivo ID: %d", responseID);
+
+			// --- LOGICA ANTI-DELETE IN ENTRATA ---
+			if ([[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"]) {
+				if (responseID == kUpdateDeleteMessages || responseID == kUpdateDeleteChannelMessages) {
+					customLog(@"[TGExtra] SUCCESS: Bloccato comando di eliminazione dal server (ID: %d)", responseID);
+					return nil; 
+				}
 			}
+		} else {
+			customLog(@"[TGExtra] DEBUG: Ricevuto pacchetto troppo corto per contenere un ID.");
 		}
 
 		NSNumber *functionIDNumber = [NSNumber numberWithUnsignedInt:functionID];
