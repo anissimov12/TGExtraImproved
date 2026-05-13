@@ -652,7 +652,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
             switch (indexPath.row) {
                 case 0: return kDisableAllAds;
                 case 1: return kDisableForwardRestriction;
-				case 2: return @"enableAntiDelete";
+				case 2: return kEnableAntiDelete;
                 default: return nil;
             }
         case 3:
