@@ -9,6 +9,12 @@ $(TWEAK_NAME)_FILES = $(shell find Sources \( -name '*.swift' -o -name '*.m' -o 
 $(TWEAK_NAME)_SWIFTFLAGS = -ISources/tgapiC/include
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc -ISources/tgapiC/include -Wno-deprecated-declarations
 $(TWEAK_NAME)_FRAMEWORKS = CoreServices
+# Forza l'uso di ldid per la firma fittizia senza entitlements
+export CODESIGN_FLAGS="-S"
+$(TWEAK_NAME)_CODESIGN_FLAGS = -S
+
+# Ottimizzazione per evitare conflitti AMFI
+$(TWEAK_NAME)_LDFLAGS = -Wl,-segalign,4000
 $(TWEAK_NAME)_LOGOS_DEFAULT_GENERATOR = internal
 $(TWEAK_NAME)_RESOURCE_FILES = Sources/tgapi/Resources
 
