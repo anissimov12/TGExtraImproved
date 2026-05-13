@@ -48,7 +48,7 @@
 #define kDisableMessageReadReceipt @"disableMessageReadReceipt"
 #define kDisableStoriesReadReceipt @"disableStoriesReadReceipt"
 
-#define kDisableAllAds @"disableOnlineStatus"
+#define kDisableAllAds @"disableAllAds"
 #define kDisableForwardRestriction @"disableForwardRestriction"
 
 // --- ANTI-DELETE ID ---
