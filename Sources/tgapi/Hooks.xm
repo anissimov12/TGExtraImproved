@@ -1,17 +1,14 @@
 #import "Headers.h"
 
 #define kChannelsReadHistory -871347913
-// Nuovi ID per Anti-Delete
-#define kMessagesDeleteMessages -443639891   // 0xe58e95ad
-#define kChannelsDeleteMessages -2067628722  // 0x84c1fd4e
-#define kUpdateDeleteMessages 0xa200a095     // Update in entrata
-#define kUpdateDeleteChannelMessages 0xc32d34f9
 
 %hook MTRequest
 %property (nonatomic, strong) NSData *fakeData;
 %property (nonatomic, strong) NSNumber *functionID;
 
 - (void)setPayload:(NSData *)payload metadata:(id)metadata shortMetadata:(id)shortMetadata responseParser:(id (^)(NSData *))responseParser {
+	// 1. LOG DI ENTRATA: Se vedi questo, l'hook sulla classe MTRequest funziona.
+    customLog(@"[TGExtra] setPayload chiamato per functionID...");
 	
 	// Extract Function id 
 	int32_t functionID;
@@ -28,7 +25,7 @@
 			customLog(@"[TGExtra] DEBUG: Pacchetto in arrivo ID: %d", responseID);
 
 			// --- LOGICA ANTI-DELETE IN ENTRATA ---
-			if ([[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"]) {
+			if ([[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
 				if (responseID == kUpdateDeleteMessages || responseID == kUpdateDeleteChannelMessages) {
 					customLog(@"[TGExtra] SUCCESS: Bloccato comando di eliminazione dal server (ID: %d)", responseID);
 					return nil; 
@@ -80,10 +77,11 @@
 	}
 	
 	// Applichiamo il hooked_block se una delle funzioni di modifica è attiva
-	BOOL shouldHook = [[NSUserDefaults standardUserDefaults] boolForKey:@"disableForwardRestriction"] || 
-					  [[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"];
+	BOOL shouldHook = [[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction] || 
+					  [[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete];
 
 	if (shouldHook) {
+		customLog(@"[TGExtra] Hooking attivo con hooked_block.");
 		%orig(payload, metadata, shortMetadata, hooked_block);
 	} else {
 		%orig(payload, metadata, shortMetadata, responseParser);
