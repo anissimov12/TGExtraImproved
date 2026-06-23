@@ -119,10 +119,6 @@ jobs:
           cc insert_dylib/insert_dylib/main.c -o insert_dylib_bin
           sudo mv insert_dylib_bin /usr/local/bin/insert_dylib
 
-      - name: Install ldid
-        run: |
-           brew install ldid
-
       - name: Inject TGExtra + SideloadFix + NSEFix into IPA
         run: |
           set -e
@@ -167,7 +163,8 @@ jobs:
 
           cp -R "$TGEXTRA_BUNDLE" "$APP_PATH/"
 
-          ldid -S "$BIN_PATH"
+          # Remove old code signature to avoid ldid assertion errors
+          codesign --remove-signature "$BIN_PATH" 2>/dev/null || true
 
           otool -L "$BIN_PATH" | grep -E "($DYLIB_NAME|SideloadFix.dylib|NSEFix.dylib)"
 
