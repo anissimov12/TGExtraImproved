@@ -124,9 +124,9 @@
     }
 
     @try {
-        id mutable = [updates mutableCopy];
-        [mutable setValue:filtered forKey:@"updates"];
-        %orig(mutable);
+        NSObject *mutableUpdates = [updates mutableCopy];
+        [mutableUpdates setValue:filtered forKey:@"updates"];
+        %orig(mutableUpdates);
     } @catch (NSException *e) {
         customLog2(@"[AntiDelete] KVC failed: %@, falling through", e);
         %orig;
