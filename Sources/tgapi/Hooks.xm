@@ -1,4 +1,5 @@
 #import "Headers.h"
+#import <objc/runtime.h>
 
 #define kChannelsReadHistory -871347913
 
@@ -84,64 +85,115 @@
 
 %end
 
-// ============================================================
-// ANTI-DELETE: перехват на уровне входящих MTProto данных
-// Updates приходят НЕ через responseParser, а через отдельный
-// канал — MTProtoInstance/MTProto processUpdates.
-// Хукаем метод который применяет апдейты к локальному состоянию.
-// ============================================================
+// ANTI-DELETE
+%hook TelegramAccountStateManager
 
-static BOOL shouldFilterDeleteUpdate(NSData *data) {
-	if (![[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) return NO;
-	if (data.length < 4) return NO;
-	
-	int32_t constructorID = 0;
-	[data getBytes:&constructorID length:4];
-	
-	return (constructorID == kUpdateDeleteMessages || constructorID == kUpdateDeleteChannelMessages);
-}
+- (void)addUpdates:(id)updates {
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
+        %orig;
+        return;
+    }
 
-// Хук на MTProto — обрабатывает входящие данные от сервера
-%hook MTProto
+    NSArray *updatesList = nil;
+    @try { updatesList = [updates valueForKey:@"updates"]; } @catch (...) {}
+    
+    if (![updatesList isKindOfClass:[NSArray class]] || updatesList.count == 0) {
+        %orig;
+        return;
+    }
+    
+    NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:updatesList.count];
+    BOOL didFilter = NO;
+    
+    for (id update in updatesList) {
+        NSString *cls = NSStringFromClass([update class]);
+        if ([cls containsString:@"deleteMessages"] ||
+            [cls containsString:@"DeleteMessages"] ||
+            [cls containsString:@"deleteChannelMessages"] ||
+            [cls containsString:@"DeleteChannelMessages"]) {
+            customLog(@"[AntiDelete] Blocked update class: %@", cls);
+            didFilter = YES;
+            continue;
+        }
+        [filtered addObject:update];
+    }
+    
+    if (!didFilter) {
+        %orig;
+        return;
+    }
 
-- (void)transportReceivedData:(NSData *)data {
-	if (shouldFilterDeleteUpdate(data)) {
-		customLog(@"[AntiDelete] Blocked incoming delete update at transport level");
-		return;
-	}
-	%orig;
+    @try {
+        id mutable = [updates mutableCopy];
+        [mutable setValue:filtered forKey:@"updates"];
+        %orig(mutable);
+    } @catch (NSException *e) {
+        customLog2(@"[AntiDelete] KVC failed: %@, falling through", e);
+        %orig;
+    }
 }
 
 %end
 
-// Хук на объект который разбирает Updates контейнер
-%hook MTIncomingMessage
+%hook TelegramAccountStateManager2
 
-- (id)initWithData:(NSData *)data {
-	if (shouldFilterDeleteUpdate(data)) {
-		customLog(@"[AntiDelete] Blocked incoming delete update at message level");
-		return nil;
-	}
-	return %orig;
+- (void)addUpdateShort:(id)update {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
+        NSString *cls = NSStringFromClass([update class]);
+        if ([cls containsString:@"deleteMessages"] || [cls containsString:@"DeleteMessages"]) {
+            customLog(@"[AntiDelete] Blocked short update: %@", cls);
+            return;
+        }
+    }
+    %orig;
 }
 
 %end
 
 __attribute__((constructor))
 static void initAntiDeleteHooks() {
-	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-		// Ищем классы MTProto динамически т.к. они в модульном фреймворке
-		Class mtProtoClass = objc_getClass("MTProto");
-		Class mtIncomingClass = objc_getClass("MTIncomingMessage");
-		
-		if (mtProtoClass && mtIncomingClass) {
-			%init(
-				MTProto = mtProtoClass,
-				MTIncomingMessage = mtIncomingClass
-			);
-			customLog(@"[AntiDelete] Hooks initialized successfully");
-		} else {
-			customLog2(@"[AntiDelete] Failed to find MTProto classes");
-		}
-	});
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+
+        const char *stateManagerNames[] = {
+            "TelegramCore.AccountStateManager",
+            "AccountStateManager",
+        };
+        
+        Class stateManagerClass = Nil;
+        for (int i = 0; i < 2; i++) {
+            stateManagerClass = objc_getClass(stateManagerNames[i]);
+            if (stateManagerClass) {
+                customLog(@"[AntiDelete] Found StateManager: %s", stateManagerNames[i]);
+                break;
+            }
+        }
+
+        if (!stateManagerClass) {
+            int numClasses = objc_getClassList(NULL, 0);
+            Class *classes = (__unsafe_unretained Class *)malloc(sizeof(Class) * numClasses);
+            numClasses = objc_getClassList(classes, numClasses);
+            
+            for (int i = 0; i < numClasses; i++) {
+                NSString *name = NSStringFromClass(classes[i]);
+                if ([name containsString:@"AccountStateManager"] ||
+                    [name containsString:@"StateManager"]) {
+                    customLog2(@"[AntiDelete] Candidate: %@", name);
+                    
+                    if ([classes[i] instancesRespondToSelector:@selector(addUpdates:)] ||
+                        class_getInstanceMethod(classes[i], NSSelectorFromString(@"addUpdates:"))) {
+                        stateManagerClass = classes[i];
+                        customLog(@"[AntiDelete] Using: %@", name);
+                        break;
+                    }
+                }
+            }
+            free(classes);
+        }
+        
+        if (stateManagerClass) {
+            %init(TelegramAccountStateManager = stateManagerClass);
+        } else {
+            customLog2(@"[AntiDelete] StateManager not found");
+        }
+    });
 }
