@@ -65,7 +65,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download release --repo anissimov12/TGExtraImproved --pattern 'com.choco.tg_*_iphoneos-arm.deb' --dir .
+          # Download from latest successful build artifact
+          RUN_ID=$(gh run list --repo anissimov12/TGExtraImproved --workflow "Build and Release Tweak" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Using run ID: $RUN_ID"
+          gh run download "$RUN_ID" --repo anissimov12/TGExtraImproved --name rootful-package --dir .
+          ls *.deb
 
       - name: Extract TGExtra version
         id: extractTGExtra
