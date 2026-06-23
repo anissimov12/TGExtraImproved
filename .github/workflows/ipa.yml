@@ -27,7 +27,7 @@ jobs:
         run: |
           # Handle Google Drive URLs
           if echo "$IPA_URL" | grep -q "drive.google.com"; then
-            FILE_ID=$(echo "$IPA_URL" | grep -oP '(?<=id=)[^&]+' || echo "$IPA_URL" | grep -oP '(?<=\/d\/)[^\/]+')
+            FILE_ID=$(echo "$IPA_URL" | sed -n 's/.*id=\([^&]*\).*/\1/p')
             curl -L -c /tmp/cookies.txt \
               "https://drive.google.com/uc?export=download&id=${FILE_ID}" \
               -o /tmp/check.html
