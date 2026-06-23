@@ -30,13 +30,6 @@
 - (id)initWithData:(NSData *)data;
 @end
 
-@interface TelegramAccountStateManager : NSObject
-- (void)addUpdates:(id)updates;
-@end
-
-@interface TelegramAccountStateManager2 : NSObject
-- (void)addUpdateShort:(id)update;
-@end
 
 // Function Handlers
 #ifdef __cplusplus

@@ -230,12 +230,10 @@ jobs:
           INJECTED_IPA="artifacts/$OUT_BASE.ipa"
           INJECTED_TIPA="artifacts/$OUT_BASE.tipa"
 
-          ipapatch --input "$INJECTED_IPA" --inplace --noconfirm --skip-already-patched || \
-          ipapatch --input "$INJECTED_IPA" --inplace --noconfirm --force || \
+          ipapatch --input "$INJECTED_IPA" --inplace --noconfirm || \
           echo "WARNING: ipapatch failed, continuing with unpatched IPA"
 
-          ipapatch --input "$INJECTED_TIPA" --inplace --noconfirm --skip-already-patched || \
-          ipapatch --input "$INJECTED_TIPA" --inplace --noconfirm --force || \
+          ipapatch --input "$INJECTED_TIPA" --inplace --noconfirm || \
           echo "WARNING: ipapatch failed, continuing with unpatched TIPA"
 
       - name: Upload injected IPA

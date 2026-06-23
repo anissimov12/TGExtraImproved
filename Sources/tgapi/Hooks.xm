@@ -86,114 +86,161 @@
 %end
 
 // ANTI-DELETE
-%hook TelegramAccountStateManager
 
-- (void)addUpdates:(id)updates {
+static IMP orig_addUpdates = NULL;
+static IMP orig_addUpdateShort = NULL;
+
+static void hooked_addUpdates(id self, SEL _cmd, id updates) {
     if (![[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
-        %orig;
+        ((void(*)(id,SEL,id))orig_addUpdates)(self, _cmd, updates);
         return;
     }
+
+    customLog2(@"[AntiDelete] addUpdates: called, updates class = %@", NSStringFromClass([updates class]));
 
     NSArray *updatesList = nil;
     @try { updatesList = [updates valueForKey:@"updates"]; } @catch (...) {}
-    
+    if (![updatesList isKindOfClass:[NSArray class]]) {
+        @try { updatesList = [updates valueForKey:@"_updates"]; } @catch (...) {}
+    }
+
     if (![updatesList isKindOfClass:[NSArray class]] || updatesList.count == 0) {
-        %orig;
+        customLog2(@"[AntiDelete] no updates array found, passing through");
+        ((void(*)(id,SEL,id))orig_addUpdates)(self, _cmd, updates);
         return;
     }
-    
+
     NSMutableArray *filtered = [NSMutableArray arrayWithCapacity:updatesList.count];
     BOOL didFilter = NO;
-    
+
     for (id update in updatesList) {
         NSString *cls = NSStringFromClass([update class]);
-        if ([cls containsString:@"deleteMessages"] ||
-            [cls containsString:@"DeleteMessages"] ||
-            [cls containsString:@"deleteChannelMessages"] ||
-            [cls containsString:@"DeleteChannelMessages"]) {
-            customLog(@"[AntiDelete] Blocked update class: %@", cls);
+        customLog2(@"[AntiDelete] update class: %@", cls);
+        if ([cls rangeOfString:@"elete" options:NSCaseInsensitiveSearch].location != NSNotFound &&
+            [cls rangeOfString:@"essage" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            customLog(@"[AntiDelete] BLOCKED update: %@", cls);
             didFilter = YES;
             continue;
         }
         [filtered addObject:update];
     }
-    
+
     if (!didFilter) {
-        %orig;
+        ((void(*)(id,SEL,id))orig_addUpdates)(self, _cmd, updates);
         return;
     }
 
+    BOOL kvcOK = NO;
     @try {
-        NSObject *mutableUpdates = [updates mutableCopy];
-        [mutableUpdates setValue:filtered forKey:@"updates"];
-        %orig(mutableUpdates);
-    } @catch (NSException *e) {
-        customLog2(@"[AntiDelete] KVC failed: %@, falling through", e);
-        %orig;
+        [updates setValue:filtered forKey:@"updates"];
+        kvcOK = YES;
+    } @catch (...) {}
+
+    if (!kvcOK) {
+        @try {
+            [updates setValue:filtered forKey:@"_updates"];
+            kvcOK = YES;
+        } @catch (...) {}
+    }
+
+    if (kvcOK) {
+        customLog(@"[AntiDelete] filtered %lu delete update(s), calling orig", (unsigned long)(updatesList.count - filtered.count));
+        ((void(*)(id,SEL,id))orig_addUpdates)(self, _cmd, updates);
+    } else {
+        customLog2(@"[AntiDelete] KVC failed, dropping entire addUpdates: call");
     }
 }
 
-%end
-
-%hook TelegramAccountStateManager2
-
-- (void)addUpdateShort:(id)update {
+static void hooked_addUpdateShort(id self, SEL _cmd, id update) {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
         NSString *cls = NSStringFromClass([update class]);
-        if ([cls containsString:@"deleteMessages"] || [cls containsString:@"DeleteMessages"]) {
-            customLog(@"[AntiDelete] Blocked short update: %@", cls);
+        customLog2(@"[AntiDelete] addUpdateShort: class = %@", cls);
+        if ([cls rangeOfString:@"elete" options:NSCaseInsensitiveSearch].location != NSNotFound &&
+            [cls rangeOfString:@"essage" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+            customLog(@"[AntiDelete] BLOCKED short update: %@", cls);
             return;
         }
     }
-    %orig;
+    ((void(*)(id,SEL,id))orig_addUpdateShort)(self, _cmd, update);
 }
 
-%end
+static BOOL swizzleMethod(Class cls, SEL sel, IMP newIMP, IMP *origIMP) {
+    Method m = class_getInstanceMethod(cls, sel);
+    if (!m) return NO;
+    *origIMP = method_setImplementation(m, newIMP);
+    customLog(@"[AntiDelete] swizzled %@ -[%s]", NSStringFromClass(cls), sel_getName(sel));
+    return YES;
+}
 
 __attribute__((constructor))
 static void initAntiDeleteHooks() {
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 
-        const char *stateManagerNames[] = {
+        SEL addUpdatesSel   = NSSelectorFromString(@"addUpdates:");
+        SEL addUpdateShortSel = NSSelectorFromString(@"addUpdateShort:");
+
+        const char *knownNames[] = {
             "TelegramCore.AccountStateManager",
+            "_TtC12TelegramCore19AccountStateManager",
             "AccountStateManager",
         };
-        
-        Class stateManagerClass = Nil;
-        for (int i = 0; i < 2; i++) {
-            stateManagerClass = objc_getClass(stateManagerNames[i]);
-            if (stateManagerClass) {
-                customLog(@"[AntiDelete] Found StateManager: %s", stateManagerNames[i]);
-                break;
+
+        BOOL foundAddUpdates = NO;
+        BOOL foundAddUpdateShort = NO;
+
+        for (int i = 0; i < 3; i++) {
+            Class cls = objc_getClass(knownNames[i]);
+            if (!cls) continue;
+            customLog(@"[AntiDelete] Trying known class: %s", knownNames[i]);
+
+            if (!foundAddUpdates && class_getInstanceMethod(cls, addUpdatesSel)) {
+                foundAddUpdates = swizzleMethod(cls, addUpdatesSel, (IMP)hooked_addUpdates, &orig_addUpdates);
+            }
+            if (!foundAddUpdateShort && class_getInstanceMethod(cls, addUpdateShortSel)) {
+                foundAddUpdateShort = swizzleMethod(cls, addUpdateShortSel, (IMP)hooked_addUpdateShort, &orig_addUpdateShort);
             }
         }
 
-        if (!stateManagerClass) {
-            int numClasses = objc_getClassList(NULL, 0);
-            Class *classes = (__unsafe_unretained Class *)malloc(sizeof(Class) * numClasses);
-            numClasses = objc_getClassList(classes, numClasses);
-            
-            for (int i = 0; i < numClasses; i++) {
+        if (!foundAddUpdates || !foundAddUpdateShort) {
+            customLog2(@"[AntiDelete] Known classes not found, scanning all classes...");
+
+            unsigned int numClasses = 0;
+            Class *classes = objc_copyClassList(&numClasses);
+
+            for (unsigned int i = 0; i < numClasses; i++) {
                 NSString *name = NSStringFromClass(classes[i]);
-                if ([name containsString:@"AccountStateManager"] ||
-                    [name containsString:@"StateManager"]) {
-                    customLog2(@"[AntiDelete] Candidate: %@", name);
-                    
-                    if ([classes[i] instancesRespondToSelector:@selector(addUpdates:)] ||
-                        class_getInstanceMethod(classes[i], NSSelectorFromString(@"addUpdates:"))) {
-                        stateManagerClass = classes[i];
-                        customLog(@"[AntiDelete] Using: %@", name);
-                        break;
+
+                if ([name containsString:@"StateManager"] || [name containsString:@"Update"]) {
+                    if (class_getInstanceMethod(classes[i], addUpdatesSel) ||
+                        class_getInstanceMethod(classes[i], addUpdateShortSel)) {
+                        customLog2(@"[AntiDelete] Candidate: %@", name);
                     }
                 }
+
+                if (!foundAddUpdates && class_getInstanceMethod(classes[i], addUpdatesSel)) {
+                    if ([name containsString:@"State"] || [name containsString:@"Manager"] ||
+                        [name containsString:@"Account"] || [name containsString:@"Update"]) {
+                        foundAddUpdates = swizzleMethod(classes[i], addUpdatesSel, (IMP)hooked_addUpdates, &orig_addUpdates);
+                    }
+                }
+
+                if (!foundAddUpdateShort && class_getInstanceMethod(classes[i], addUpdateShortSel)) {
+                    if ([name containsString:@"State"] || [name containsString:@"Manager"] ||
+                        [name containsString:@"Account"] || [name containsString:@"Update"]) {
+                        foundAddUpdateShort = swizzleMethod(classes[i], addUpdateShortSel, (IMP)hooked_addUpdateShort, &orig_addUpdateShort);
+                    }
+                }
+
+                if (foundAddUpdates && foundAddUpdateShort) break;
             }
             free(classes);
         }
-        
-        if (stateManagerClass) {
-            %init(TelegramAccountStateManager = stateManagerClass);
-        } else {
-            customLog2(@"[AntiDelete] StateManager not found");
+
+        if (!foundAddUpdates) {
+            customLog2(@"[AntiDelete] addUpdates: NOT found in any class");
+        }
+        if (!foundAddUpdateShort) {
+            customLog2(@"[AntiDelete] addUpdateShort: NOT found (may be normal)");
         }
     });
 }
