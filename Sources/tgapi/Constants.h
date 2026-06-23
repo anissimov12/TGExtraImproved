@@ -51,11 +51,13 @@
 #define kDisableAllAds @"disableAllAds"
 #define kDisableForwardRestriction @"disableForwardRestriction"
 
-// --- ANTI-DELETE ID ---
-#define kMessagesDeleteMessages -443639891   // 0xe58e95ad (Messaggi privati e gruppi)
-#define kChannelsDeleteMessages -2067628722  // 0x84c1fd4e (Canali e Supergruppi)
-#define kUpdateDeleteMessages 0xa200a095     // Update che arriva dal server
-#define kUpdateDeleteChannelMessages 0xc32d34f9 // Update canale dal server
+// --- ANTI-DELETE TL CONSTRUCTOR IDs (verified from api_sources/Api0.swift) ---
+#define kUpdateDeleteMessages      -1576161051  // updateDeleteMessages#a20db0e5
+#define kUpdateDeleteChannelMessages -1020437742 // updateDeleteChannelMessages#c32d34f2
+
+// --- OUTGOING DELETE REQUEST IDs ---
+#define kMessagesDeleteMessages    -443639891   // messages.deleteMessages#e58e95ad
+#define kChannelsDeleteMessages    -2067628722  // channels.deleteMessages#84c1fd4e
 
 #define kEnableAntiDelete @"enableAntiDelete"
 

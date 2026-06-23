@@ -22,6 +22,14 @@
 @property (nonatomic, strong, readonly) id (^responseParser)(NSData *);
 @end
 
+@interface MTProto : NSObject
+- (void)transportReceivedData:(NSData *)data;
+@end
+
+@interface MTIncomingMessage : NSObject
+- (id)initWithData:(NSData *)data;
+@end
+
 // Function Handlers
 #ifdef __cplusplus
 extern "C" {

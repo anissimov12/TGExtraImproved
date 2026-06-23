@@ -7,8 +7,6 @@
 %property (nonatomic, strong) NSNumber *functionID;
 
 - (void)setPayload:(NSData *)payload metadata:(id)metadata shortMetadata:(id)shortMetadata responseParser:(id (^)(NSData *))responseParser {
-	// 1. LOG DI ENTRATA: Se vedi questo, l'hook sulla classe MTRequest funziona.
-    customLog(@"[TGExtra] setPayload chiamato per functionID...");
 	
 	// Extract Function id 
 	int32_t functionID;
@@ -16,25 +14,6 @@
 	self.functionID = [NSNumber numberWithInt:functionID];
 	
 	id(^hooked_block)(NSData *) = ^id(NSData *inputData) {
-		// --- LOGICA ANTI-DELETE IN ENTRATA ---
-		if (inputData.length >= 4) {
-			int32_t responseID;
-			[inputData getBytes:&responseID length:4];
-			
-			// Log di debug per vedere TUTTI i pacchetti in arrivo (utile per trovare nuovi ID)
-			customLog(@"[TGExtra] DEBUG: Pacchetto in arrivo ID: %d", responseID);
-
-			// --- LOGICA ANTI-DELETE IN ENTRATA ---
-			if ([[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) {
-				if (responseID == kUpdateDeleteMessages || responseID == kUpdateDeleteChannelMessages) {
-					customLog(@"[TGExtra] SUCCESS: Bloccato comando di eliminazione dal server (ID: %d)", responseID);
-					return nil; 
-				}
-			}
-		} else {
-			customLog(@"[TGExtra] DEBUG: Ricevuto pacchetto troppo corto per contenere un ID.");
-		}
-
 		NSNumber *functionIDNumber = [NSNumber numberWithUnsignedInt:functionID];
 		NSData *fuck = [TLParser handleResponse:inputData functionID:functionIDNumber];
 		id result;
@@ -65,23 +44,11 @@
 		case kChannelsReadHistory:
 			handleChannelsReadReceipt(self, payload);
 			break;
-		// Gestione richieste di eliminazione in uscita (opzionale)
-		case kMessagesDeleteMessages:
-		case kChannelsDeleteMessages:
-			if ([[NSUserDefaults standardUserDefaults] boolForKey:@"enableAntiDelete"]) {
-				customLog(@"[TGExtra] Richiesta eliminazione in uscita intercettata.");
-			}
-			break;
 		default:
 			break;
 	}
 	
-	// Applichiamo il hooked_block se una delle funzioni di modifica è attiva
-	BOOL shouldHook = [[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction] || 
-					  [[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete];
-
-	if (shouldHook) {
-		customLog(@"[TGExtra] Hooking attivo con hooked_block.");
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
 		%orig(payload, metadata, shortMetadata, hooked_block);
 	} else {
 		%orig(payload, metadata, shortMetadata, responseParser);
@@ -90,7 +57,7 @@
 
 %end
 
-// Manager che gestisce le richieste (rimane invariato)
+// Manager which handles requests
 %hook MTRequestMessageService
 
 - (void)addRequest:(MTRequest *)request {
@@ -116,3 +83,65 @@
 }
 
 %end
+
+// ============================================================
+// ANTI-DELETE: перехват на уровне входящих MTProto данных
+// Updates приходят НЕ через responseParser, а через отдельный
+// канал — MTProtoInstance/MTProto processUpdates.
+// Хукаем метод который применяет апдейты к локальному состоянию.
+// ============================================================
+
+static BOOL shouldFilterDeleteUpdate(NSData *data) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kEnableAntiDelete]) return NO;
+	if (data.length < 4) return NO;
+	
+	int32_t constructorID = 0;
+	[data getBytes:&constructorID length:4];
+	
+	return (constructorID == kUpdateDeleteMessages || constructorID == kUpdateDeleteChannelMessages);
+}
+
+// Хук на MTProto — обрабатывает входящие данные от сервера
+%hook MTProto
+
+- (void)transportReceivedData:(NSData *)data {
+	if (shouldFilterDeleteUpdate(data)) {
+		customLog(@"[AntiDelete] Blocked incoming delete update at transport level");
+		return;
+	}
+	%orig;
+}
+
+%end
+
+// Хук на объект который разбирает Updates контейнер
+%hook MTIncomingMessage
+
+- (id)initWithData:(NSData *)data {
+	if (shouldFilterDeleteUpdate(data)) {
+		customLog(@"[AntiDelete] Blocked incoming delete update at message level");
+		return nil;
+	}
+	return %orig;
+}
+
+%end
+
+__attribute__((constructor))
+static void initAntiDeleteHooks() {
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		// Ищем классы MTProto динамически т.к. они в модульном фреймворке
+		Class mtProtoClass = objc_getClass("MTProto");
+		Class mtIncomingClass = objc_getClass("MTIncomingMessage");
+		
+		if (mtProtoClass && mtIncomingClass) {
+			%init(
+				MTProto = mtProtoClass,
+				MTIncomingMessage = mtIncomingClass
+			);
+			customLog(@"[AntiDelete] Hooks initialized successfully");
+		} else {
+			customLog2(@"[AntiDelete] Failed to find MTProto classes");
+		}
+	});
+}
