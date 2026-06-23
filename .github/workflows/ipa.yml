@@ -25,12 +25,32 @@ jobs:
         env:
           IPA_URL: ${{ inputs.decrypted_ipa_url }}
         run: |
-          curl -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" -o decrypted.ipa "$IPA_URL"
-          unzip -q decrypted.ipa
+          # Handle Google Drive URLs
+          if echo "$IPA_URL" | grep -q "drive.google.com"; then
+            FILE_ID=$(echo "$IPA_URL" | grep -oP '(?<=id=)[^&]+' || echo "$IPA_URL" | grep -oP '(?<=\/d\/)[^\/]+')
+            curl -L -c /tmp/cookies.txt \
+              "https://drive.google.com/uc?export=download&id=${FILE_ID}" \
+              -o /tmp/check.html
+            CONFIRM=$(grep -o 'confirm=[^&"]*' /tmp/check.html | head -1 | cut -d= -f2)
+            if [ -n "$CONFIRM" ]; then
+              curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt \
+                "https://drive.google.com/uc?export=download&confirm=${CONFIRM}&id=${FILE_ID}" \
+                -o decrypted.ipa
+            else
+              curl -L -c /tmp/cookies.txt -b /tmp/cookies.txt \
+                "https://drive.google.com/uc?export=download&id=${FILE_ID}" \
+                -o decrypted.ipa
+            fi
+          else
+            curl -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" -o decrypted.ipa "$IPA_URL"
+          fi
+          # Verify it's a valid zip/ipa
+          unzip -t decrypted.ipa > /dev/null 2>&1 || { echo "Downloaded file is not a valid IPA/zip"; exit 1; }
 
       - name: Extract Name, Bundle ID, and Version
         id: extractIPA
         run: |
+          unzip -q decrypted.ipa
           PLIST=$(ls Payload/*.app/Info.plist | head -n1)
 
           IPA_APP_NAME=$(grep -A1 '<key>CFBundleDisplayName</key>' "$PLIST" | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p' || grep -A1 '<key>CFBundleExecutable</key>' "$PLIST" | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p' || grep -A1 '<key>CFBundleName</key>' "$PLIST" | sed -n 's/.*<string>\(.*\)<\/string>.*/\1/p')
